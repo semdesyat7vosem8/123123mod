@@ -1,80 +1,49 @@
+// server.js
 const express = require('express');
-
 const app = express();
-const PORT = process.env.PORT || 3000;
-
 app.use(express.json());
 
-let commandQueue = [];
-let bans = [];
+let commands = []; // команды для Roblox
+let bans = []; // {username, userId, type, endTime (ms), reason, adminId}
 
-// ===== команда от Discord =====
 app.post('/command', (req, res) => {
-    const { type, username, reason, days, adminId } = req.body;
-
-    if (!type || !username) {
-        return res.status(400).json({ error: "Missing data" });
-    }
-
-    commandQueue.push({
-        type,
-        username,
-        reason,
-        days,
-        adminId,
-        sent: false
-    });
-
-    if (type === 'ban') {
-        bans.push({
-            username,
-            unbanDate: Date.now() + days * 86400000,
-            reason
-        });
-    }
-
-    if (type === 'permaban') {
-        bans.push({
-            username,
-            unbanDate: null,
-            reason
-        });
-    }
-
-    res.json({ ok: true });
-});
-
-// ===== Roblox забирает команды =====
-app.get('/get-commands', (req, res) => {
-    const cmds = commandQueue.filter(c => !c.sent);
-    cmds.forEach(c => c.sent = true);
-    res.json(cmds);
-});
-
-// ===== список банов =====
-app.get('/banlist', (req, res) => {
+    const { type, username, userId, reason, days, adminId } = req.body;
     const now = Date.now();
 
-    const list = bans.map(b => {
-        let daysLeft = b.unbanDate
-            ? Math.ceil((b.unbanDate - now) / 86400000)
-            : "PERMA";
+    // создаём объект команды для Roblox
+    commands.push({ type, username, userId, reason, days, adminId, timestamp: now });
 
-        return {
-            username: b.username,
-            daysLeft,
-            reason: b.reason
-        };
-    });
+    // если бан, добавляем в бан-лист
+    if (type === "ban" || type === "permaban") {
+        let endTime = type === "permaban" ? null : now + (days * 24 * 60 * 60 * 1000);
+        bans.push({ username, userId, type, reason, adminId, endTime });
+    }
 
-    res.json(list);
+    // если unban, удаляем из бан-листа
+    if (type === "unban") {
+        bans = bans.filter(b => b.username !== username && b.userId !== userId);
+    }
+
+    res.json({ status: "ok" });
 });
 
-// ===== тест =====
-app.get('/', (req, res) => {
-    res.send('Server is running ✅');
+// Roblox забирает команды
+app.get('/get-commands', (req, res) => {
+    const toSend = [...commands];
+    commands = []; // очищаем после выдачи
+    res.json(toSend);
 });
 
-app.listen(PORT, () => {
-    console.log("Server started on port " + PORT);
+// Список банов
+app.get('/banlist', (req, res) => {
+    const now = Date.now();
+    const activeBans = bans.map(b => {
+        let daysLeft = b.endTime ? Math.ceil((b.endTime - now) / (24*60*60*1000)) : "PERM";
+        if (b.endTime && b.endTime < now) return null; // бан истёк
+        return {...b, daysLeft};
+    }).filter(Boolean);
+    res.json(activeBans);
 });
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
