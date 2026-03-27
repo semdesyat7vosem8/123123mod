@@ -1,4 +1,3 @@
-````js
 const { Client, GatewayIntentBits } = require('discord.js');
 const fetch = require('node-fetch'); // node-fetch@2
 
@@ -166,4 +165,3 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.BOT_TOKEN);
-````
