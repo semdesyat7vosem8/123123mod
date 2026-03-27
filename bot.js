@@ -1,85 +1,48 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const config = { BOT_TOKEN: process.env.BOT_TOKEN, SERVER_URL: process.env.SERVER_URL };
 
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
-client.once('ready', () => console.log("Bot is ready!"));
-
-// Функция отправки логов
-async function sendLog(type, description) {
-    let webhook;
-
-    if (type === "kick") webhook = process.env.WEBHOOK_KICK;
-    if (type === "ban") webhook = process.env.WEBHOOK_BAN;
-    if (type === "permaban") webhook = process.env.WEBHOOK_PERMABAN;
-    if (type === "unban") webhook = process.env.WEBHOOK_UNBAN;
-
-    if (!webhook) return console.error("No webhook for type:", type);
-
-    const embed = {
-        title: type.toUpperCase(),
-        description,
-        color: getColorForType(type),
-        timestamp: new Date()
-    };
-
-    try {
-        await fetch(webhook, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-    } catch (err) {
-        console.error("Webhook error:", err);
-    }
+async function sendCommand(type, username, reason, days, adminId) {
+    await fetch(`${config.SERVER_URL}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, username, reason, days, adminId })
+    });
 }
 
-function getColorForType(type) {
-    if (type === "kick") return 0xFFC0CB; // розовый
-    if (type === "ban") return 0xFFA500;
-    if (type === "permaban") return 0xFF0000;
-    if (type === "unban") return 0x00FF00;
-    return 0xFFFFFF;
-}
+client.once('ready', () => console.log("Bot ready!"));
 
-// команды (kick, ban, permaban, unban)
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isCommand()) return;
-
-    const { commandName } = interaction;
-
-    // Проверка роли
-    if (!interaction.member.roles.cache.has('1432275054149894227')) {
-        await interaction.reply({ content: "You don't have permission", ephemeral: true });
+    if(!interaction.isCommand()) return;
+    const roleId = '1432275054149894227';
+    if(!interaction.member.roles.cache.has(roleId)) {
+        await interaction.reply({ content: "No permission", ephemeral: true });
         return;
     }
 
+    const cmd = interaction.commandName;
     const username = interaction.options.getString('username');
-    const reason = interaction.options.getString('reason') || "No reason set";
-    const days = interaction.options.getInteger('days');
+    const reason = interaction.options.getString('reason') || 'No reason';
+    const days = interaction.options.getInteger('days') || 0;
 
-    if (commandName === 'kick') {
-        await sendLog("kick", `**Player:** ${username}\n**Reason:** ${reason}\n📄Admin: <@${interaction.user.id}>`);
-        await interaction.reply(`✅ Kicked ${username}`);
+    if(cmd === 'kick' || cmd === 'ban' || cmd === 'permaban' || cmd === 'unban') {
+        await sendCommand(cmd, username, reason, days, interaction.user.id);
+        await interaction.reply(`✅ ${cmd} executed for ${username}`);
     }
 
-    if (commandName === 'ban') {
-        await sendLog("ban", `**Player:** ${username}\n**Days:** ${days}\n**Reason:** ${reason}\n📄Admin: <@${interaction.user.id}>`);
-        await interaction.reply(`✅ Banned ${username} for ${days} day(s)`);
+    if(cmd === 'banlist') {
+        const res = await fetch(`${config.SERVER_URL}/banlist`);
+        const list = await res.json();
+        let text = list.map(b => `${b.username} — ${b.daysLeft} day(s)`).join("\n");
+        await interaction.reply("```" + text + "```");
     }
 
-    if (commandName === 'permaban') {
-        await sendLog("permaban", `**Player:** ${username}\n**Reason:** ${reason}\n📄Admin: <@${interaction.user.id}>`);
-        await interaction.reply(`✅ Permanently banned ${username}`);
-    }
-
-    if (commandName === 'unban') {
-        await sendLog("unban", `**Player:** ${username}\n📄Admin: <@${interaction.user.id}>`);
-        await interaction.reply(`✅ Unbanned ${username}`);
+    if(cmd === 'find') {
+        const userId = interaction.options.getString('userid');
+        await interaction.reply(`https://www.roblox.com/users/${userId}/profile`);
     }
 });
 
-// **Используем токен из переменной окружения**
-client.login(process.env.BOT_TOKEN);
+client.login(config.BOT_TOKEN);
