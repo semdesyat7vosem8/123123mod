@@ -83,13 +83,6 @@ async function sendLog(title, username, userId, description, avatar) {
     });
 }
 
-    await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ embeds: [embed] })
-    });
-}
-
 // 🔗 профиль
 function profile(id) {
     return `https://www.roblox.com/users/${id}/profile`;
