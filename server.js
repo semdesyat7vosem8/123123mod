@@ -1,76 +1,103 @@
-const express = require('express');
-const fs = require('fs');
-const fetch = require('node-fetch');
+const { Client, GatewayIntentBits } = require('discord.js');
+const fetch = require('node-fetch'); // node-fetch@2
+const config = require('./config.json');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+});
 
-app.use(express.json());
+client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
 
-let bans = {};
-
-// Загружаем баны из файла, если есть
-if(fs.existsSync('bans.json')) {
-    bans = JSON.parse(fs.readFileSync('bans.json'));
+// ===== Отправка команд на сервер Roblox =====
+async function sendCommand(type, username, reason, days, adminId, userId = null) {
+    const data = { type, username, reason, days, adminId, userId };
+    try {
+        await fetch(`${process.env.SERVER_URL}/command`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+    } catch (err) {
+        console.error("Error sending command to server:", err);
+    }
 }
 
-// Сохраняем баны
-function saveBans() {
-    fs.writeFileSync('bans.json', JSON.stringify(bans, null, 2));
-}
-
-// Лог в Discord
-async function sendLog(action, playerName, userId, adminName, reason, days = null) {
+// ===== Отправка логов в Discord вебхук =====
+async function sendEmbedLog(title, description) {
     const embed = {
-        title: `${action.toUpperCase()} LOG`,
+        title: title.toUpperCase(),
+        description,
         color: 0xFFC0CB,
-        fields: [
-            { name: "Player", value: `${playerName} (${userId})`, inline: true },
-            { name: "Reason", value: reason, inline: true },
-            { name: "📄Administrator", value: adminName, inline: false }
-        ],
         timestamp: new Date()
     };
-
-    if(days !== null) embed.fields.push({ name: "Days", value: `${days}`, inline: true });
-
-    await fetch(WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ embeds: [embed] })
-    });
+    try {
+        await fetch(process.env.WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ embeds: [embed] })
+        });
+    } catch (err) {
+        console.error("Error sending log to Discord:", err);
+    }
 }
 
-// Получение команд от Roblox
-app.post('/command', async (req, res) => {
-    const { type, username, userId, reason, days, adminName } = req.body;
+// ===== Слушаем slash команды =====
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isCommand()) return;
+    const { commandName } = interaction;
 
-    if(type === 'kick') {
-        await sendLog('kick', username, userId, adminName, reason);
-    } else if(type === 'ban') {
-        const expire = days ? Date.now() + days * 24*60*60*1000 : null;
-        bans[userId] = { username, reason, adminName, expire };
-        saveBans();
-        await sendLog('ban', username, userId, adminName, reason, days);
-    } else if(type === 'permaban') {
-        bans[userId] = { username, reason, adminName, expire: null };
-        saveBans();
-        await sendLog('permaban', username, userId, adminName, reason);
-    } else if(type === 'unban') {
-        delete bans[userId];
-        saveBans();
-        await sendLog('unban', username, userId, adminName, reason);
+    // Проверка роли
+    if (!interaction.member.roles.cache.has('1432275054149894227')) {
+        return interaction.reply({ content: "You don't have permission", ephemeral: true });
     }
 
-    res.json({ status: 'ok' });
+    const username = interaction.options.getString('username');
+    const reason = interaction.options.getString('reason') || "No reason set";
+    const days = interaction.options.getInteger('days') || 0;
+    const adminId = interaction.user.id;
+
+    // ===== KICK =====
+    if (commandName === 'kick') {
+        await sendCommand('kick', username, reason, 0, adminId);
+        await sendEmbedLog("KICK LOG", `**Player:** ${username}\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
+        await interaction.reply(`✅ Kicked ${username}`);
+    }
+
+    // ===== BAN =====
+    if (commandName === 'ban') {
+        await sendCommand('ban', username, reason, days, adminId);
+        await sendEmbedLog("BAN LOG", `**Player:** ${username} (${days} day(s))\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
+        await interaction.reply(`✅ Banned ${username} for ${days} day(s)`);
+    }
+
+    // ===== PERMABAN =====
+    if (commandName === 'permaban') {
+        await sendCommand('permaban', username, reason, 0, adminId);
+        await sendEmbedLog("PERMABAN LOG", `**Player:** ${username}\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
+        await interaction.reply(`✅ Permanently banned ${username}`);
+    }
+
+    // ===== UNBAN =====
+    if (commandName === 'unban') {
+        await sendCommand('unban', username, "", 0, adminId);
+        await sendEmbedLog("UNBAN LOG", `**Player:** ${username}\n📄Administrator: <@${adminId}>`);
+        await interaction.reply(`✅ Unbanned ${username}`);
+    }
+
+    // ===== FIND =====
+    if (commandName === 'find') {
+        const userId = interaction.options.getString('userid');
+        await interaction.reply(`https://www.roblox.com/users/${userId}/profile`);
+    }
+
+    // ===== BANLIST =====
+    if (commandName === 'banlist') {
+        const res = await fetch(`${process.env.SERVER_URL}/banlist`);
+        const data = await res.json();
+        if (data.length === 0) return await interaction.reply("No bans currently.");
+        const text = data.map(b => `${b.username} (${b.userId}) — ${b.daysLeft}`).join("\n");
+        await interaction.reply("```" + text + "```");
+    }
 });
 
-// Команда для Roblox получить текущие баны
-app.get('/get-bans', (req, res) => {
-    res.json(bans);
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+client.login(process.env.BOT_TOKEN);
