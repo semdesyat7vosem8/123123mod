@@ -1,6 +1,5 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const fetch = require('node-fetch');
-const config = require('./config.json');
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
@@ -8,7 +7,7 @@ const client = new Client({
 
 client.once('ready', () => console.log("Bot is ready!"));
 
-// Функция отправки логов на вебхуки
+// Функция отправки логов
 async function sendLog(type, description) {
     let webhook;
 
@@ -37,16 +36,15 @@ async function sendLog(type, description) {
     }
 }
 
-// Функция для получения цвета для типа действия
 function getColorForType(type) {
-    if (type === "kick") return 0xFFFF00;   // Yellow
-    if (type === "ban") return 0xFFA500;    // Orange
-    if (type === "permaban") return 0xFF0000; // Red
-    if (type === "unban") return 0x00FF00;  // Green
-    return 0xFFFFFF; // Default
+    if (type === "kick") return 0xFFC0CB; // розовый
+    if (type === "ban") return 0xFFA500;
+    if (type === "permaban") return 0xFF0000;
+    if (type === "unban") return 0x00FF00;
+    return 0xFFFFFF;
 }
 
-// Команды
+// команды (kick, ban, permaban, unban)
 client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
 
@@ -58,37 +56,30 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // === KICK ===
+    const username = interaction.options.getString('username');
+    const reason = interaction.options.getString('reason') || "No reason set";
+    const days = interaction.options.getInteger('days');
+
     if (commandName === 'kick') {
-        const username = interaction.options.getString('username');
-        const reason = interaction.options.getString('reason') || "No reason set";
         await sendLog("kick", `**Player:** ${username}\n**Reason:** ${reason}\n📄Admin: <@${interaction.user.id}>`);
         await interaction.reply(`✅ Kicked ${username}`);
     }
 
-    // === BAN ===
     if (commandName === 'ban') {
-        const username = interaction.options.getString('username');
-        const days = interaction.options.getInteger('days');
-        const reason = interaction.options.getString('reason') || "No reason set";
         await sendLog("ban", `**Player:** ${username}\n**Days:** ${days}\n**Reason:** ${reason}\n📄Admin: <@${interaction.user.id}>`);
         await interaction.reply(`✅ Banned ${username} for ${days} day(s)`);
     }
 
-    // === PERMABAN ===
     if (commandName === 'permaban') {
-        const username = interaction.options.getString('username');
-        const reason = interaction.options.getString('reason') || "No reason set";
         await sendLog("permaban", `**Player:** ${username}\n**Reason:** ${reason}\n📄Admin: <@${interaction.user.id}>`);
         await interaction.reply(`✅ Permanently banned ${username}`);
     }
 
-    // === UNBAN ===
     if (commandName === 'unban') {
-        const username = interaction.options.getString('username');
         await sendLog("unban", `**Player:** ${username}\n📄Admin: <@${interaction.user.id}>`);
         await interaction.reply(`✅ Unbanned ${username}`);
     }
 });
 
-client.login(config.BOT_TOKEN);
+// **Используем токен из переменной окружения**
+client.login(process.env.BOT_TOKEN);
