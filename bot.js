@@ -1,92 +1,69 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const fetch = require('node-fetch'); // node-fetch@2
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+const fetch = require('node-fetch');
 
-const SERVER_URL = process.env.SERVER_URL;
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+});
 
-client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
+client.once('ready', () => console.log("Bot ready!"));
 
+// ОТПРАВКА
 async function sendCommand(type, username, reason, days, adminId) {
-    const data = { type, username, reason, days, adminId };
 
-    console.log("SENDING TO:", process.env.SERVER_URL);
+    console.log("SEND:", type, username);
 
-    try {
-        const res = await fetch(`${process.env.SERVER_URL}/command`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
+    // на сервер
+    await fetch(process.env.SERVER_URL + '/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, username, reason, days, adminId })
+    });
 
-        console.log("STATUS:", res.status);
-    } catch (err) {
-        console.error("ERROR:", err);
-    }
-}
-
-async function sendEmbedLog(title, description) {
-    const embed = {
-        title: title.toUpperCase(),
-        description,
-        color: 0xFFC0CB,
-        timestamp: new Date()
-    };
-    try {
-        await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-    } catch (err) { console.error("Error sending log:", err); }
+    // вебхук (ОДИН)
+    await fetch(process.env.WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            content:
+`**${type.toUpperCase()}**
+👤 ${username}
+📄 ${reason}
+📅 ${days || 0} days`
+        })
+    });
 }
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
-    if (!interaction.member.roles.cache.has('1432275054149894227')) {
-        return interaction.reply({ content: "You don't have permission", ephemeral: true });
+
+    const roleId = '1432275054149894227';
+
+    if (!interaction.member.roles.cache.has(roleId)) {
+        return interaction.reply({ content: "No permission", ephemeral: true });
     }
 
     const username = interaction.options.getString('username');
-    const reason = interaction.options.getString('reason') || "No reason set";
+    const reason = interaction.options.getString('reason') || "No reason";
     const days = interaction.options.getInteger('days') || 0;
-    const adminId = interaction.user.id;
 
     if (interaction.commandName === 'kick') {
-        await sendCommand('kick', username, reason, 0, adminId);
-        await sendEmbedLog("KICK LOG", `**Player:** ${username}\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
-        await interaction.reply(`✅ Kicked ${username}`);
+        await sendCommand('kick', username, reason, 0, interaction.user.id);
+        await interaction.reply(`✅ Kick ${username}`);
     }
 
     if (interaction.commandName === 'ban') {
-        await sendCommand('ban', username, reason, days, adminId);
-        await sendEmbedLog("BAN LOG", `**Player:** ${username} (${days} day(s))\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
-        await interaction.reply(`✅ Banned ${username} for ${days} day(s)`);
+        await sendCommand('ban', username, reason, days, interaction.user.id);
+        await interaction.reply(`✅ Ban ${username}`);
     }
 
     if (interaction.commandName === 'permaban') {
-        await sendCommand('permaban', username, reason, 0, adminId);
-        await sendEmbedLog("PERMABAN LOG", `**Player:** ${username}\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
-        await interaction.reply(`✅ Permanently banned ${username}`);
+        await sendCommand('permaban', username, reason, 0, interaction.user.id);
+        await interaction.reply(`✅ Permaban ${username}`);
     }
 
     if (interaction.commandName === 'unban') {
-        await sendCommand('unban', username, "", 0, adminId);
-        await sendEmbedLog("UNBAN LOG", `**Player:** ${username}\n📄Administrator: <@${adminId}>`);
-        await interaction.reply(`✅ Unbanned ${username}`);
-    }
-
-    if (interaction.commandName === 'find') {
-        const userId = interaction.options.getString('userid');
-        await interaction.reply(`https://www.roblox.com/users/${userId}/profile`);
-    }
-
-    if (interaction.commandName === 'banlist') {
-        const res = await fetch(`${SERVER_URL}/banlist`);
-        const data = await res.json();
-        if (data.length === 0) return await interaction.reply("No bans currently.");
-        const text = data.map(b => `${b.username} (${b.userId}) — ${b.daysLeft}`).join("\n");
-        await interaction.reply("```" + text + "```");
+        await sendCommand('unban', username, reason, 0, interaction.user.id);
+        await interaction.reply(`✅ Unban ${username}`);
     }
 });
 
