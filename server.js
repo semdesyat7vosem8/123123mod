@@ -1,49 +1,47 @@
 // server.js
 const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
 const app = express();
-app.use(express.json());
+const port = process.env.PORT || 3000;
 
-let commands = []; // команды для Roblox
-let bans = []; // {username, userId, type, endTime (ms), reason, adminId}
+app.use(cors());
+app.use(bodyParser.json());
+
+let commands = []; // сюда приходят команды с Discord
+let banData = {};  // userId: { username, daysLeft, permaban }
 
 app.post('/command', (req, res) => {
-    const { type, username, userId, reason, days, adminId } = req.body;
-    const now = Date.now();
+    const cmd = req.body;
 
-    // создаём объект команды для Roblox
-    commands.push({ type, username, userId, reason, days, adminId, timestamp: now });
-
-    // если бан, добавляем в бан-лист
-    if (type === "ban" || type === "permaban") {
-        let endTime = type === "permaban" ? null : now + (days * 24 * 60 * 60 * 1000);
-        bans.push({ username, userId, type, reason, adminId, endTime });
+    if(cmd.type === 'ban') {
+        banData[cmd.username] = { username: cmd.username, daysLeft: cmd.days, permaban: false };
+    }
+    if(cmd.type === 'permaban') {
+        banData[cmd.username] = { username: cmd.username, daysLeft: 0, permaban: true };
+    }
+    if(cmd.type === 'unban') {
+        banData[cmd.username] = nil;
     }
 
-    // если unban, удаляем из бан-листа
-    if (type === "unban") {
-        bans = bans.filter(b => b.username !== username && b.userId !== userId);
-    }
-
-    res.json({ status: "ok" });
+    commands.push(cmd);
+    res.json({ status: 'ok' });
 });
 
-// Roblox забирает команды
 app.get('/get-commands', (req, res) => {
-    const toSend = [...commands];
-    commands = []; // очищаем после выдачи
-    res.json(toSend);
+    res.json(commands);
+    commands = []; // очищаем после того как Roblox их забрал
 });
 
-// Список банов
-app.get('/banlist', (req, res) => {
-    const now = Date.now();
-    const activeBans = bans.map(b => {
-        let daysLeft = b.endTime ? Math.ceil((b.endTime - now) / (24*60*60*1000)) : "PERM";
-        if (b.endTime && b.endTime < now) return null; // бан истёк
-        return {...b, daysLeft};
-    }).filter(Boolean);
-    res.json(activeBans);
+app.get('/banlist', (req,res) => {
+    const list = [];
+    for(let user in banData){
+        let data = banData[user];
+        list.push({ username: data.username, daysLeft: data.daysLeft || 0 });
+    }
+    res.json(list);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+});
