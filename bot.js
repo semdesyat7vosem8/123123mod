@@ -1,5 +1,4 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const fetch = require('node-fetch'); // node-fetch@2
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] 
@@ -12,155 +11,169 @@ client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 });
 
-// 🔗 Генерация ссылки на Roblox профиль
-function createProfileLink(userId) {
-    return `https://www.roblox.com/users/${userId}/profile`;
+// 🔍 Получение userId по нику
+async function getRobloxUser(username) {
+    try {
+        const res = await fetch('https://users.roblox.com/v1/usernames/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                usernames: [username],
+                excludeBannedUsers: false
+            })
+        });
+
+        const data = await res.json();
+
+        if (!data.data || data.data.length === 0) return null;
+
+        return data.data[0]; // { id, name, displayName }
+    } catch (err) {
+        console.error("Roblox API error:", err);
+        return null;
+    }
+}
+
+// 🖼️ Получение аватара
+async function getRobloxAvatar(userId) {
+    try {
+        const res = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`);
+        const data = await res.json();
+
+        return data.data[0].imageUrl;
+    } catch (err) {
+        console.error("Avatar error:", err);
+        return null;
+    }
 }
 
 // 📡 Отправка команды на сервер
 async function sendCommand(type, username, userId, reason, days, adminId) {
-    const data = { type, username, userId, reason, days, adminId };
-
     try {
         const res = await fetch(`${SERVER_URL}/command`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify({ type, username, userId, reason, days, adminId })
         });
 
-        console.log(`[COMMAND] ${type} -> ${username} (${userId}) | Status: ${res.status}`);
+        const text = await res.text();
+        console.log(`[${type}] ${username} (${userId}) ->`, res.status, text);
     } catch (err) {
-        console.error("ERROR sending command:", err);
+        console.error("Command error:", err);
     }
 }
 
-// 📜 Отправка embed лога
-async function sendEmbedLog(title, description) {
+// 📜 Лог с аватаром
+async function sendEmbedLog(title, user, userId, avatar, description) {
     const embed = {
         title: title.toUpperCase(),
         description,
+        thumbnail: { url: avatar },
         color: 0xFFC0CB,
         timestamp: new Date()
     };
 
-    try {
-        await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [embed] })
-        });
-    } catch (err) {
-        console.error("Error sending log:", err);
-    }
+    await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ embeds: [embed] })
+    });
+}
+
+// 🔗 профиль
+function profile(userId) {
+    return `https://www.roblox.com/users/${userId}/profile`;
 }
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
-
-    // ❗ защита от двойного срабатывания
     if (interaction.replied || interaction.deferred) return;
 
-    // 🔒 проверка роли
     if (!interaction.member.roles.cache.has('1432275054149894227')) {
-        return interaction.reply({ 
-            content: "You don't have permission", 
-            ephemeral: true 
-        });
+        return interaction.reply({ content: "No permission", ephemeral: true });
     }
 
     const username = interaction.options.getString('username');
-    const userId = interaction.options.getString('userid') || "Unknown";
     const reason = interaction.options.getString('reason') || "No reason set";
     const days = interaction.options.getInteger('days') || 0;
     const adminId = interaction.user.id;
 
-    const profileLink = createProfileLink(userId);
+    await interaction.reply("⏳ Processing...");
+
+    const user = await getRobloxUser(username);
+    if (!user) {
+        return interaction.editReply(`❌ User "${username}" not found`);
+    }
+
+    const userId = user.id;
+    const avatar = await getRobloxAvatar(userId);
+
+    const descBase = `**Player:** ${user.name} (${userId})
+🔗 ${profile(userId)}
+
+📄 Administrator: <@${adminId}>`;
 
     // 🚪 KICK
     if (interaction.commandName === 'kick') {
-        await sendCommand('kick', username, userId, reason, 0, adminId);
+        await sendCommand('kick', user.name, userId, reason, 0, adminId);
 
-        await sendEmbedLog("KICK LOG",
-`**Player:** ${username} (${userId})
-🔗 ${profileLink}
+        await sendEmbedLog("KICK LOG", user.name, userId, avatar,
+`${descBase}
 
-**Reason:** ${reason}
-📄 Administrator: <@${adminId}>`
-        );
+**Reason:** ${reason}`);
 
-        await interaction.reply(`✅ Kicked ${username}`);
+        return interaction.editReply(`✅ Kicked ${user.name}`);
     }
 
     // 🔨 BAN
     if (interaction.commandName === 'ban') {
-        await sendCommand('ban', username, userId, reason, days, adminId);
+        await sendCommand('ban', user.name, userId, reason, days, adminId);
 
-        await sendEmbedLog("BAN LOG",
-`**Player:** ${username} (${userId})
-🔗 ${profileLink}
+        await sendEmbedLog("BAN LOG", user.name, userId, avatar,
+`${descBase}
 
 **Duration:** ${days} day(s)
-**Reason:** ${reason}
-📄 Administrator: <@${adminId}>`
-        );
+**Reason:** ${reason}`);
 
-        await interaction.reply(`✅ Banned ${username} for ${days} day(s)`);
+        return interaction.editReply(`✅ Banned ${user.name}`);
     }
 
     // ☠️ PERMABAN
     if (interaction.commandName === 'permaban') {
-        await sendCommand('permaban', username, userId, reason, 0, adminId);
+        await sendCommand('permaban', user.name, userId, reason, 0, adminId);
 
-        await sendEmbedLog("PERMABAN LOG",
-`**Player:** ${username} (${userId})
-🔗 ${profileLink}
+        await sendEmbedLog("PERMABAN LOG", user.name, userId, avatar,
+`${descBase}
 
-**Reason:** ${reason}
-📄 Administrator: <@${adminId}>`
-        );
+**Reason:** ${reason}`);
 
-        await interaction.reply(`✅ Permanently banned ${username}`);
+        return interaction.editReply(`✅ Permanently banned ${user.name}`);
     }
 
     // 🔓 UNBAN
     if (interaction.commandName === 'unban') {
-        await sendCommand('unban', username, userId, "", 0, adminId);
+        await sendCommand('unban', user.name, userId, "", 0, adminId);
 
-        await sendEmbedLog("UNBAN LOG",
-`**Player:** ${username} (${userId})
-🔗 ${profileLink}
+        await sendEmbedLog("UNBAN LOG", user.name, userId, avatar,
+`${descBase}`);
 
-📄 Administrator: <@${adminId}>`
-        );
-
-        await interaction.reply(`✅ Unbanned ${username}`);
-    }
-
-    // 🔍 FIND
-    if (interaction.commandName === 'find') {
-        const userId = interaction.options.getString('userid');
-        await interaction.reply(`https://www.roblox.com/users/${userId}/profile`);
+        return interaction.editReply(`✅ Unbanned ${user.name}`);
     }
 
     // 📋 BANLIST
     if (interaction.commandName === 'banlist') {
-        try {
-            const res = await fetch(`${SERVER_URL}/banlist`);
-            const data = await res.json();
+        const res = await fetch(`${SERVER_URL}/banlist`);
+        const data = await res.json();
 
-            if (data.length === 0) {
-                return await interaction.reply("No bans currently.");
-            }
-
-            const text = data.map(b => 
-                `${b.username} (${b.userId}) — ${b.daysLeft} day(s)`
-            ).join("\n");
-
-            await interaction.reply("```" + text + "```");
-        } catch (err) {
-            console.error(err);
-            await interaction.reply("Error fetching banlist.");
+        if (data.length === 0) {
+            return interaction.editReply("No bans.");
         }
+
+        const text = data.map(b => 
+            `${b.username} (${b.userId}) — ${b.daysLeft} day(s)`
+        ).join("\n");
+
+        return interaction.editReply("```" + text + "```");
     }
 });
 
