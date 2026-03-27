@@ -46,9 +46,9 @@ app.post('/command', (req, res) => {
 
 // ===== Roblox забирает команды =====
 app.get('/get-commands', (req, res) => {
-    const cmds = commandQueue.filter(c => !c.sent);
-    cmds.forEach(c => c.sent = true);
-    res.json(cmds);
+    const unsent = commandQueue.filter(c => !c.sent);
+    unsent.forEach(c => c.sent = true);
+    res.json(unsent);
 });
 
 // ===== список банов =====
