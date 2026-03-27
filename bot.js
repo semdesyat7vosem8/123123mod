@@ -1,3 +1,4 @@
+````js
 const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({ 
@@ -11,7 +12,7 @@ client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 });
 
-// 🔍 Получение userId по нику
+// 🔍 Получаем Roblox данные
 async function getRobloxUser(username) {
     try {
         const res = await fetch('https://users.roblox.com/v1/usernames/users', {
@@ -24,54 +25,64 @@ async function getRobloxUser(username) {
         });
 
         const data = await res.json();
-
         if (!data.data || data.data.length === 0) return null;
 
-        return data.data[0]; // { id, name, displayName }
+        return data.data[0]; // { id, name }
     } catch (err) {
         console.error("Roblox API error:", err);
         return null;
     }
 }
 
-// 🖼️ Получение аватара
-async function getRobloxAvatar(userId) {
+// 🖼️ Аватар
+async function getAvatar(userId) {
     try {
-        const res = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`);
+        const res = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`);
         const data = await res.json();
-
         return data.data[0].imageUrl;
-    } catch (err) {
-        console.error("Avatar error:", err);
+    } catch {
         return null;
     }
 }
 
-// 📡 Отправка команды на сервер
-async function sendCommand(type, username, userId, reason, days, adminId) {
+// 📡 СТАРЫЙ формат (ВАЖНО)
+async function sendCommand(type, username, reason, days, adminId) {
     try {
         const res = await fetch(`${SERVER_URL}/command`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type, username, userId, reason, days, adminId })
+            body: JSON.stringify({ type, username, reason, days, adminId })
         });
 
         const text = await res.text();
-        console.log(`[${type}] ${username} (${userId}) ->`, res.status, text);
+        console.log(`[SERVER]`, res.status, text);
     } catch (err) {
         console.error("Command error:", err);
     }
 }
 
-// 📜 Лог с аватаром
-async function sendEmbedLog(title, user, userId, avatar, description) {
+// 📜 ЛОГ
+async function sendLog(title, username, userId, description, avatar) {
     const embed = {
-        title: title.toUpperCase(),
+        title,
         description,
-        thumbnail: { url: avatar },
+        thumbnail: avatar ? { url: avatar } : undefined,
         color: 0xFFC0CB,
         timestamp: new Date()
     };
+
+    // 👇 ВАЖНО: обычный текст (для поиска)
+    const content = `🔎 ${username} (${userId})`;
+
+    await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            content: content,
+            embeds: [embed]
+        })
+    });
+}
 
     await fetch(WEBHOOK_URL, {
         method: 'POST',
@@ -81,8 +92,8 @@ async function sendEmbedLog(title, user, userId, avatar, description) {
 }
 
 // 🔗 профиль
-function profile(userId) {
-    return `https://www.roblox.com/users/${userId}/profile`;
+function profile(id) {
+    return `https://www.roblox.com/users/${id}/profile`;
 }
 
 client.on('interactionCreate', async interaction => {
@@ -100,64 +111,68 @@ client.on('interactionCreate', async interaction => {
 
     await interaction.reply("⏳ Processing...");
 
+    // 🔍 получаем данные Roblox (ТОЛЬКО ДЛЯ ЛОГОВ)
     const user = await getRobloxUser(username);
-    if (!user) {
-        return interaction.editReply(`❌ User "${username}" not found`);
+
+    let userId = "Unknown";
+    let avatar = null;
+    let displayName = username;
+
+    if (user) {
+        userId = user.id;
+        displayName = user.name;
+        avatar = await getAvatar(userId);
     }
 
-    const userId = user.id;
-    const avatar = await getRobloxAvatar(userId);
+    const base = `**Player:** ${displayName} (${userId})
+🔗 ${userId !== "Unknown" ? profile(userId) : "Not found"}
 
-    const descBase = `**Player:** ${user.name} (${userId})
-🔗 ${profile(userId)}
-
-📄 Administrator: <@${adminId}>`;
+📄 **Administrator:** <@${adminId}>`;
 
     // 🚪 KICK
     if (interaction.commandName === 'kick') {
-        await sendCommand('kick', user.name, userId, reason, 0, adminId);
+        await sendCommand('kick', username, reason, 0, adminId);
 
-        await sendEmbedLog("KICK LOG", user.name, userId, avatar,
-`${descBase}
+       await sendLog("KICK LOG", displayName, userId, `${base}`, avatar);
 
-**Reason:** ${reason}`);
+**Reason:** ${reason}`, avatar);
 
-        return interaction.editReply(`✅ Kicked ${user.name}`);
+        return interaction.editReply(`✅ Successfully Kicked ${displayName}.`);
     }
 
     // 🔨 BAN
     if (interaction.commandName === 'ban') {
-        await sendCommand('ban', user.name, userId, reason, days, adminId);
+        await sendCommand('ban', username, reason, days, adminId);
 
-        await sendEmbedLog("BAN LOG", user.name, userId, avatar,
-`${descBase}
+        await sendLog("BAN LOG", displayName, userId,
+`${base}
 
 **Duration:** ${days} day(s)
-**Reason:** ${reason}`);
+**Reason:** ${reason}`, avatar);
 
-        return interaction.editReply(`✅ Banned ${user.name}`);
+        return interaction.editReply(`✅ Successfully Banned ${displayName}.`);
     }
 
     // ☠️ PERMABAN
     if (interaction.commandName === 'permaban') {
-        await sendCommand('permaban', user.name, userId, reason, 0, adminId);
+        await sendCommand('permaban', username, reason, 0, adminId);
 
-        await sendEmbedLog("PERMABAN LOG", user.name, userId, avatar,
-`${descBase}
+        await sendLog("PERMABAN LOG", displayName, userId,
+`${base}
 
-**Reason:** ${reason}`);
+**Reason:** ${reason}`, avatar);
 
-        return interaction.editReply(`✅ Permanently banned ${user.name}`);
+        return interaction.editReply(`✅ Successfully Perma-banned ${displayName}.`);
     }
 
     // 🔓 UNBAN
     if (interaction.commandName === 'unban') {
-        await sendCommand('unban', user.name, userId, "", 0, adminId);
+        await sendCommand('unban', username, "", 0, adminId);
 
-        await sendEmbedLog("UNBAN LOG", user.name, userId, avatar,
-`${descBase}`);
+        await sendLog("UNBAN LOG", displayName, userId,
+`${base}`, avatar);
 
-        return interaction.editReply(`✅ Unbanned ${user.name}`);
+        return interaction.editReply(`✅ Successfully Unbanned ${displayName}.`);
     }
 
     // 📋 BANLIST
@@ -165,7 +180,7 @@ client.on('interactionCreate', async interaction => {
         const res = await fetch(`${SERVER_URL}/banlist`);
         const data = await res.json();
 
-        if (data.length === 0) {
+        if (!data.length) {
             return interaction.editReply("No bans.");
         }
 
@@ -178,3 +193,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.BOT_TOKEN);
+````
