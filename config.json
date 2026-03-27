@@ -1,1 +1,8 @@
-
+{
+  "BOT_TOKEN": "",
+  "SERVER_URL": "https://my-discord-bot-ykis.onrender.com",
+  "WEBHOOK_KICK": "https://discord.com/api/webhooks/1487097462664597616/FvEXG6PMq8_49P4aYOHWfrx8DnBkPOATHCrTct5DN-QcS95_FD6fjf0DiRVyo4jwxA1D",
+  "WEBHOOK_BAN": "https://discord.com/api/webhooks/1484944724564512981/bRioZ0eXrHwwHFxrKOYFOsA9RsV6BGS0nzAnGxy3fvQ49gyHjdCP8USSkngINRgwBw3Q",
+  "WEBHOOK_PERMABAN": "https://discord.com/api/webhooks/1487096833477181522/wYmorzY54TMxqA0_cU-LOhsyZCT-_7UeXQZfxJArhL2xIb0DFPSI1XwsEX1Y7VhEZWJD",
+  "WEBHOOK_UNBAN": "https://discord.com/api/webhooks/1487097365960855844/YwS6RvJjGXb5RseoUV4HvNaIEASbuffaVuGSUTwtf9uuNgofJ7DOk66lWPk_Z8bjJe7y"
+}
