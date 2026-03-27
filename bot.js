@@ -1,127 +1,86 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const fetch = require('node-fetch');
+const fetch = require('node-fetch'); // node-fetch@2
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
-// Берём всё из Environment Variables Render
-const BOT_TOKEN = process.env.BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-// Создаем клиента
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
-});
+client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
 
-// Лог готовности бота
-client.once('clientReady', () => console.log("Bot is ready!"));
-
-// Общая функция отправки команды на сервер Roblox
 async function sendCommand(type, username, reason, days, adminId) {
-    const data = { type, username, reason, days, adminId, userId: null };
+    const data = { type, username, reason, days, adminId };
     try {
         await fetch(`${SERVER_URL}/command`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-    } catch (err) {
-        console.error("Error sending command to server:", err);
-    }
+    } catch (err) { console.error(err); }
 }
 
-// Функция отправки логов в Discord через Webhook
-async function sendLog(action, username, userId, adminId, reason, days = null) {
+async function sendEmbedLog(title, description) {
     const embed = {
-        title: `${action.toUpperCase()} LOG`,
+        title: title.toUpperCase(),
+        description,
         color: 0xFFC0CB,
-        fields: [
-            { name: "Player", value: `${username} (${userId || "unknown"})`, inline: true },
-            { name: "Reason", value: reason || "No reason set", inline: true },
-            { name: "📄Administrator", value: `<@${adminId}>`, inline: false }
-        ],
         timestamp: new Date()
     };
-    if (days !== null) embed.fields.push({ name: "Days", value: `${days}`, inline: true });
-
     try {
         await fetch(WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ embeds: [embed] })
         });
-    } catch (err) {
-        console.error("Error sending log to Discord:", err);
-    }
+    } catch (err) { console.error("Error sending log:", err); }
 }
 
-// ===== Обработка команд Discord =====
 client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
-
-    const { commandName } = interaction;
-
-    // Проверка роли
     if (!interaction.member.roles.cache.has('1432275054149894227')) {
-        await interaction.reply({ content: "You don't have permission", ephemeral: true });
-        return;
+        return interaction.reply({ content: "You don't have permission", ephemeral: true });
     }
 
+    const username = interaction.options.getString('username');
+    const reason = interaction.options.getString('reason') || "No reason set";
+    const days = interaction.options.getInteger('days') || 0;
     const adminId = interaction.user.id;
 
-    // === KICK ===
-    if (commandName === 'kick') {
-        const username = interaction.options.getString('username');
-        const reason = interaction.options.getString('reason') || "No reason set";
+    if (interaction.commandName === 'kick') {
         await sendCommand('kick', username, reason, 0, adminId);
-        await sendLog('kick', username, null, adminId, reason);
+        await sendEmbedLog("KICK LOG", `**Player:** ${username}\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
         await interaction.reply(`✅ Kicked ${username}`);
     }
 
-    // === BAN ===
-    if (commandName === 'ban') {
-        const username = interaction.options.getString('username');
-        const days = interaction.options.getInteger('days');
-        const reason = interaction.options.getString('reason') || "No reason set";
+    if (interaction.commandName === 'ban') {
         await sendCommand('ban', username, reason, days, adminId);
-        await sendLog('ban', username, null, adminId, reason, days);
+        await sendEmbedLog("BAN LOG", `**Player:** ${username} (${days} day(s))\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
         await interaction.reply(`✅ Banned ${username} for ${days} day(s)`);
     }
 
-    // === PERMABAN ===
-    if (commandName === 'permaban') {
-        const username = interaction.options.getString('username');
-        const reason = interaction.options.getString('reason') || "No reason set";
+    if (interaction.commandName === 'permaban') {
         await sendCommand('permaban', username, reason, 0, adminId);
-        await sendLog('permaban', username, null, adminId, reason);
+        await sendEmbedLog("PERMABAN LOG", `**Player:** ${username}\n**Reason:** ${reason}\n📄Administrator: <@${adminId}>`);
         await interaction.reply(`✅ Permanently banned ${username}`);
     }
 
-    // === UNBAN ===
-    if (commandName === 'unban') {
-        const username = interaction.options.getString('username');
+    if (interaction.commandName === 'unban') {
         await sendCommand('unban', username, "", 0, adminId);
-        await sendLog('unban', username, null, adminId, "No reason set");
+        await sendEmbedLog("UNBAN LOG", `**Player:** ${username}\n📄Administrator: <@${adminId}>`);
         await interaction.reply(`✅ Unbanned ${username}`);
     }
 
-    // === BANLIST ===
-    if (commandName === 'banlist') {
-        try {
-            const res = await fetch(`${SERVER_URL}/banlist`);
-            const data = await res.json();
-            if (data.length === 0) return await interaction.reply("No bans currently.");
-            const text = data.map(b => `${b.username} (${b.userId}) — ${b.daysLeft}`).join("\n");
-            await interaction.reply("```" + text + "```");
-        } catch (err) {
-            console.error("Error fetching banlist:", err);
-            await interaction.reply("❌ Error fetching banlist");
-        }
-    }
-
-    // === FIND ===
-    if (commandName === 'find') {
+    if (interaction.commandName === 'find') {
         const userId = interaction.options.getString('userid');
         await interaction.reply(`https://www.roblox.com/users/${userId}/profile`);
     }
+
+    if (interaction.commandName === 'banlist') {
+        const res = await fetch(`${SERVER_URL}/banlist`);
+        const data = await res.json();
+        if (data.length === 0) return await interaction.reply("No bans currently.");
+        const text = data.map(b => `${b.username} (${b.userId}) — ${b.daysLeft}`).join("\n");
+        await interaction.reply("```" + text + "```");
+    }
 });
 
-client.login(BOT_TOKEN);
+client.login(process.env.BOT_TOKEN);
