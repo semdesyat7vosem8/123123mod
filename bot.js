@@ -1,4 +1,3 @@
-````js
 const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({ 
@@ -193,4 +192,3 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.BOT_TOKEN);
-````
