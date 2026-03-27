@@ -60,29 +60,34 @@ async function sendCommand(type, username, reason, days, adminId) {
     }
 }
 
-// 📜 ЛОГ в Discord
+// 📜 ЛОГ через бота (без webhook)
 async function sendLog(title, username, userId, description, avatar) {
-    const embed = {
-        title,
-        description,
-        thumbnail: avatar ? { url: avatar } : undefined,
-        color: 0xFFC0CB,
-        timestamp: new Date()
-    };
-
-    const content = `🔎 ${username} (${userId})`;
-
     try {
-        await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                content,
-                embeds: [embed]
-            })
+        const channel = await client.channels.fetch(process.env.LOG_CHANNEL_ID);
+
+        if (!channel) {
+            console.error("Log channel not found");
+            return;
+        }
+
+        const embed = {
+            title: title,
+            description: description,
+            thumbnail: avatar ? { url: avatar } : undefined,
+            color: 0xFFC0CB,
+            timestamp: new Date()
+        };
+
+        // ✅ простой текст для поиска
+        const content = `${username} '|' ${userId}`;
+
+        await channel.send({
+            content: content,
+            embeds: [embed]
         });
+
     } catch (err) {
-        console.error("Webhook error:", err);
+        console.error("Send log error:", err);
     }
 }
 
