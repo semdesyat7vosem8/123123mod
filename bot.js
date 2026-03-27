@@ -62,13 +62,12 @@ async function sendCommand(type, username, reason, days, adminId) {
 
 // 📜 ЛОГ через бота (без webhook)
 async function sendLog(title, username, userId, description, avatar) {
-    try {
-        const channel = await client.channels.fetch(process.env.LOG_CHANNEL_ID);
+    // 🔹 Вставь сюда ID своего канала
+    const channelId = "1433031537783341097"; // <-- замените на ваш канал
 
-        if (!channel) {
-            console.error("Log channel not found");
-            return;
-        }
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel) return console.error("Log channel not found");
 
         const embed = {
             title: title,
@@ -78,14 +77,14 @@ async function sendLog(title, username, userId, description, avatar) {
             timestamp: new Date()
         };
 
-        // ✅ простой текст для поиска
-        const content = `${username} '|' ${userId}`;
+        const content = `${username} | ${userId}`;
 
         await channel.send({
             content: content,
             embeds: [embed]
         });
 
+        console.log(`✅ Log sent to channel ${channelId}`);
     } catch (err) {
         console.error("Send log error:", err);
     }
