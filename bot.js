@@ -9,13 +9,20 @@ client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
 
 async function sendCommand(type, username, reason, days, adminId) {
     const data = { type, username, reason, days, adminId };
+
+    console.log("SENDING TO:", process.env.SERVER_URL);
+
     try {
-        await fetch(`${SERVER_URL}/command`, {
+        const res = await fetch(`${process.env.SERVER_URL}/command`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-    } catch (err) { console.error(err); }
+
+        console.log("STATUS:", res.status);
+    } catch (err) {
+        console.error("ERROR:", err);
+    }
 }
 
 async function sendEmbedLog(title, description) {
